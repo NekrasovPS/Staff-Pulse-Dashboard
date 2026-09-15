@@ -7,6 +7,8 @@ import {
   OrgUiProvider,
   useOrgUi,
 } from "@/features/org-view/model/OrgUiContext";
+import { useOrgWebSocket } from "@/features/org-socket/api/useOrgWebSocket";
+import { ConnectionBadge } from "@/features/org-socket/ui/ConnectionBadge";
 
 const GlobalStyle = createGlobalStyle`
   * {
@@ -46,6 +48,12 @@ const TitleGroup = styled.div`
   display: flex;
   flex-direction: column;
   gap: 4px;
+`;
+
+const HeaderRight = styled.div`
+  display: flex;
+  align-items: center;
+  gap: 16px;
 `;
 
 const MainTitle = styled.h1`
@@ -120,6 +128,7 @@ const queryClient = new QueryClient({
 
 const DashboardContent: React.FC = () => {
   const { activeTab, setActiveTab } = useOrgUi();
+  const { status } = useOrgWebSocket();
 
   return (
     <Layout>
@@ -131,20 +140,23 @@ const DashboardContent: React.FC = () => {
           </Subtitle>
         </TitleGroup>
 
-        <TabSwitcher>
-          <TabButton
-            $isActive={activeTab === "tree"}
-            onClick={() => setActiveTab("tree")}
-          >
-            Дерево
-          </TabButton>
-          <TabButton
-            $isActive={activeTab === "table"}
-            onClick={() => setActiveTab("table")}
-          >
-            Таблица
-          </TabButton>
-        </TabSwitcher>
+        <HeaderRight>
+          <ConnectionBadge status={status} />
+          <TabSwitcher>
+            <TabButton
+              $isActive={activeTab === "tree"}
+              onClick={() => setActiveTab("tree")}
+            >
+              Дерево
+            </TabButton>
+            <TabButton
+              $isActive={activeTab === "table"}
+              onClick={() => setActiveTab("table")}
+            >
+              Таблица
+            </TabButton>
+          </TabSwitcher>
+        </HeaderRight>
       </Header>
 
       <ContentGrid>

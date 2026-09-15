@@ -1,7 +1,7 @@
-import React, { useState, useEffect } from "react";
-import styled from "styled-components";
-import { TreeNode } from "@/entities/org/model/types";
-import { useOrgUi } from "@/features/org-view/model/OrgUiContext";
+import React, { useState, useEffect } from 'react';
+import styled from 'styled-components';
+import { TreeNode } from '@/entities/org/model/types';
+import { useOrgUi } from '@/features/org-view/model/OrgUiContext';
 
 interface TreeNodeItemProps {
   node: TreeNode;
@@ -23,14 +23,11 @@ const NodeRow = styled.div<{ $level: number; $isSelected: boolean }>`
   border-radius: 6px;
   transition: all 0.15s ease;
   cursor: pointer;
-  background-color: ${({ $isSelected }) =>
-    $isSelected ? "#e0e7ff" : "transparent"};
-  border-left: 3px solid
-    ${({ $isSelected }) => ($isSelected ? "#4f46e5" : "transparent")};
+  background-color: ${({ $isSelected }) => ($isSelected ? '#e0e7ff' : 'transparent')};
+  border-left: 3px solid ${({ $isSelected }) => ($isSelected ? '#4f46e5' : 'transparent')};
 
   &:hover {
-    background-color: ${({ $isSelected }) =>
-      $isSelected ? "#c7d2fe" : "#f1f5f9"};
+    background-color: ${({ $isSelected }) => ($isSelected ? '#c7d2fe' : '#f1f5f9')};
   }
 `;
 
@@ -46,9 +43,13 @@ const ToggleButton = styled.button<{ $isOpen: boolean; $hasChildren: boolean }>`
   padding: 0;
   font-size: 11px;
   color: #64748b;
-  transform: ${({ $isOpen }) => ($isOpen ? "rotate(90deg)" : "rotate(0deg)")};
-  transition: transform 0.2s ease;
-  visibility: ${({ $hasChildren }) => ($hasChildren ? "visible" : "hidden")};
+  transform: ${({ $isOpen }) => ($isOpen ? 'rotate(90deg)' : 'rotate(0deg)')};
+  transition: transform 0.25s cubic-bezier(0.4, 0, 0.2, 1);
+  visibility: ${({ $hasChildren }) => ($hasChildren ? 'visible' : 'hidden')};
+
+  @media (prefers-reduced-motion: reduce) {
+    transition: none;
+  }
 
   &:hover {
     color: #1e293b;
@@ -78,26 +79,39 @@ const PerformanceIndicator = styled.div<{ $score: number }>`
   font-size: 12px;
   font-weight: 600;
   color: ${({ $score }) => {
-    if ($score >= 75) return "#16a34a";
-    if ($score >= 50) return "#d97706";
-    return "#dc2626";
+    if ($score >= 75) return '#16a34a';
+    if ($score >= 50) return '#d97706';
+    return '#dc2626';
   }};
 
   &::before {
-    content: "";
+    content: '';
     width: 8px;
     height: 8px;
     border-radius: 50%;
     background-color: ${({ $score }) => {
-      if ($score >= 75) return "#16a34a";
-      if ($score >= 50) return "#d97706";
-      return "#dc2626";
+      if ($score >= 75) return '#16a34a';
+      if ($score >= 50) return '#d97706';
+      return '#dc2626';
     }};
   }
 `;
 
-const ChildrenContainer = styled.div<{ $isOpen: boolean }>`
-  display: ${({ $isOpen }) => ($isOpen ? "flex" : "none")};
+// Анимация высоты через CSS Grid (раскрытие от 0fr до 1fr) с отключением при prefers-reduced-motion
+const AnimatedContainer = styled.div<{ $isOpen: boolean }>`
+  display: grid;
+  grid-template-rows: ${({ $isOpen }) => ($isOpen ? '1fr' : '0fr')};
+  transition: grid-template-rows 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+  overflow: hidden;
+
+  @media (prefers-reduced-motion: reduce) {
+    transition: none;
+  }
+`;
+
+const InnerContainer = styled.div`
+  min-height: 0;
+  display: flex;
   flex-direction: column;
 `;
 
@@ -106,19 +120,14 @@ export const TreeNodeItem: React.FC<TreeNodeItemProps> = ({
   defaultExpandedLevel = 1,
 }) => {
   const { selectedNodeId, setSelectedNodeId } = useOrgUi();
-  const [isOpen, setIsOpen] = useState<boolean>(
-    node.level <= defaultExpandedLevel,
-  );
+  const [isOpen, setIsOpen] = useState<boolean>(node.level <= defaultExpandedLevel);
 
   const hasChildren = node.children.length > 0;
   const isSelected = selectedNodeId === node.id;
 
-  // Автоматическое раскрытие ветви, если внутри находится выбранный узел
   useEffect(() => {
     const isDescendantSelected = (n: TreeNode, targetId: string): boolean => {
-      return n.children.some(
-        (c) => c.id === targetId || isDescendantSelected(c, targetId),
-      );
+      return n.children.some((c) => c.id === targetId || isDescendantSelected(c, targetId));
     };
 
     if (selectedNodeId && isDescendantSelected(node, selectedNodeId)) {
@@ -139,17 +148,13 @@ export const TreeNodeItem: React.FC<TreeNodeItemProps> = ({
 
   return (
     <NodeWrapper>
-      <NodeRow
-        $level={node.level}
-        $isSelected={isSelected}
-        onClick={handleRowClick}
-      >
+      <NodeRow $level={node.level} $isSelected={isSelected} onClick={handleRowClick}>
         <ToggleButton
           type="button"
           $isOpen={isOpen}
           $hasChildren={hasChildren}
           onClick={handleToggleClick}
-          aria-label={isOpen ? "Свернуть ветку" : "Развернуть ветку"}
+          aria-label={isOpen ? 'Свернуть' : 'Развернуть'}
         >
           ▶
         </ToggleButton>
@@ -161,15 +166,17 @@ export const TreeNodeItem: React.FC<TreeNodeItemProps> = ({
       </NodeRow>
 
       {hasChildren && (
-        <ChildrenContainer $isOpen={isOpen}>
-          {node.children.map((child) => (
-            <TreeNodeItem
-              key={child.id}
-              node={child}
-              defaultExpandedLevel={defaultExpandedLevel}
-            />
-          ))}
-        </ChildrenContainer>
+        <AnimatedContainer $isOpen={isOpen}>
+          <InnerContainer>
+            {node.children.map((child) => (
+              <TreeNodeItem
+                key={child.id}
+                node={child}
+                defaultExpandedLevel={defaultExpandedLevel}
+              />
+            ))}
+          </InnerContainer>
+        </AnimatedContainer>
       )}
     </NodeWrapper>
   );
