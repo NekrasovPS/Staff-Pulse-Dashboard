@@ -1,8 +1,8 @@
-# 🧬 Модель Данных и Алгоритмический Контракт[cite: 1]
+# 🧬 Модель Данных и Алгоритмический Контракт
 
-## 1. Схема DTO (Контракт API бэкенда)[cite: 1]
+## 1. Схема DTO (Контракт API бэкенда)
 
-Ответ эндпоинта `GET /api/org-tree` представляет собой плоский массив узлов[cite: 1]. Ответ строго валидируется на клиенте библиотекой Zod[cite: 1]:
+Ответ эндпоинта `GET /api/org-tree` представляет собой плоский массив узлов. Ответ строго валидируется на клиенте библиотекой Zod:
 
 ```typescript
 export interface OrgNodeDto {
@@ -18,7 +18,7 @@ export interface OrgNodeDto {
 
 ---
 
-## 2. Иерархическая Модель Дерева (`TreeNode`)[cite: 1]
+## 2. Иерархическая Модель Дерева (`TreeNode`)
 
 На клиенте плоский массив трансформируется в связное дерево:
 
@@ -31,9 +31,9 @@ export interface TreeNode extends OrgNodeDto {
 
 ---
 
-## 3. Математика Агрегации Показателей[cite: 1]
+## 3. Математика Агрегации Показателей
 
-Для аналитической таблицы каждый узел обогащается суммарными показателями своего поддерева (включая свои метрики и данные всех потомков)[cite: 1]:
+Для аналитической таблицы каждый узел обогащается суммарными показателями своего поддерева (включая свои метрики и данные всех потомков):
 
 ```typescript
 export interface AggregatedOrgNode {
@@ -55,21 +55,21 @@ export interface AggregatedOrgNode {
 ### Формулы расчета:
 
 1. **Суммарная численность сотрудников:**
-   $$\text{totalHeadcount} = \text{ownHeadcount} + \sum_{child \in \text{children}} child.\text{totalHeadcount}$$[cite: 1]
+   $$\text{totalHeadcount} = \text{ownHeadcount} + \sum_{child \in \text{children}} child.\text{totalHeadcount}$$
 
 2. **Суммарный бюджет подразделения:**
-   $$\text{totalBudget} = \text{ownBudget} + \sum_{child \in \text{children}} child.\text{totalBudget}$$[cite: 1]
+   $$\text{totalBudget} = \text{ownBudget} + \sum_{child \in \text{children}} child.\text{totalBudget}$$
 
 3. **Взвешенная средняя эффективность (Weighted Performance):**
-   Эффективность взвешивается по численности сотрудников каждого узла в поддереве[cite: 1]:
-   $$\text{weightedPerformance} = \frac{\sum_{i \in \text{subtree}} (\text{performance}_i \times \text{headcount}_i)}{\sum_{i \in \text{subtree}} \text{headcount}_i}$$[cite: 1]
+   Эффективность взвешивается по численности сотрудников каждого узла в поддереве:
+   $$\text{weightedPerformance} = \frac{\sum_{i \in \text{subtree}} (\text{performance}_i \times \text{headcount}_i)}{\sum_{i \in \text{subtree}} \text{headcount}_i}$$
    *Округление производится до одного знака после запятой.*
 
 ---
 
-## 4. Контракт WebSocket Патча и Инкрементальный Алгоритм[cite: 1]
+## 4. Контракт WebSocket Патча и Инкрементальный Алгоритм
 
-Сервер вещает события мутации метрик узлов в реальном времени[cite: 1]:
+Сервер вещает события мутации метрик узлов в реальном времени:
 
 ```typescript
 export interface WebSocketMessage {
@@ -84,10 +84,10 @@ export interface WebSocketMessage {
 }
 ```
 
-### Алгоритм инкрементального пересчета (`patchNodeAndAncestors`)[cite: 1]:
+### Алгоритм инкрементального пересчета (`patchNodeAndAncestors`):
 Вместо полного обхода дерева алгоритм работает за время $O(H)$, где $H \le 3$:
 1. Вычисляется дельта бюджета: $\Delta Budget = Budget_{new} - Budget_{old}$.
 2. Вычисляется дельта взвешенного произведения эффективности:  
    $$\Delta Prod = (Perf_{new} \times Headcount_{new}) - (Perf_{old} \times Headcount_{old})$$
 3. Обновляется сам целевой узел.
-4. В цикле `while (currentParentId)` алгоритм поднимается строго вверх по цепочке предков до корня, прибавляя $\Delta Budget$, $\Delta Headcount$ и $\Delta Prod$ к родительским суммам без затрагивания параллельных веток дерева[cite: 1].
+4. В цикле `while (currentParentId)` алгоритм поднимается строго вверх по цепочке предков до корня, прибавляя $\Delta Budget$, $\Delta Headcount$ и $\Delta Prod$ к родительским суммам без затрагивания параллельных веток дерева.
