@@ -49,7 +49,11 @@ export const useOrgWebSocket = (): UseOrgWebSocketReturn => {
     if (isUnmountedRef.current) return;
 
     setStatus((prev) => (prev === "connected" ? "reconnecting" : prev));
-    const socketUrl = "ws://localhost:3001/ws";
+    const isDev = window.location.port === "5173";
+    const protocol = window.location.protocol === "https:" ? "wss:" : "ws:";
+    const socketUrl = isDev
+      ? "ws://localhost:3001/ws"
+      : `${protocol}//${window.location.host}/ws`;
     const ws = new WebSocket(socketUrl);
     wsRef.current = ws;
 

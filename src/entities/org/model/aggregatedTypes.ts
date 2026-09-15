@@ -1,5 +1,3 @@
-import { TreeNode } from "./types";
-
 export interface AggregatedOrgNode {
   id: string;
   name: string;

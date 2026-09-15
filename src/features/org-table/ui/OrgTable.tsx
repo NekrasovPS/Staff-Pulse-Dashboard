@@ -383,9 +383,8 @@ export const OrgTable: React.FC = () => {
   };
 
   const handleHeaderDoubleClick = (field: SortField) => {
-    if (sortField === field) {
-      setSortDirection((prev) => (prev === "asc" ? "desc" : "asc"));
-    }
+    setSortField(field);
+    setSortDirection("desc"); // Двойной клик всегда гарантирует обратную сортировку по ТЗ
   };
 
   const renderSortIndicator = (field: SortField) => {
