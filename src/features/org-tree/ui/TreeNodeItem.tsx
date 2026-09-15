@@ -1,6 +1,7 @@
-import React, { useState } from "react";
+import React, { useState, useEffect } from "react";
 import styled from "styled-components";
 import { TreeNode } from "@/entities/org/model/types";
+import { useOrgUi } from "@/features/org-view/model/OrgUiContext";
 
 interface TreeNodeItemProps {
   node: TreeNode;
@@ -13,38 +14,52 @@ const NodeWrapper = styled.div`
   user-select: none;
 `;
 
-const NodeRow = styled.div<{ $level: number }>`
+const NodeRow = styled.div<{ $level: number; $isSelected: boolean }>`
   display: flex;
   align-items: center;
   gap: 12px;
   padding: 8px 12px;
-  padding-left: ${({ $level }) => `${$level * 24 + 12}px`};
+  padding-left: ${({ $level }) => `${$level * 22 + 12}px`};
   border-radius: 6px;
-  transition: background-color 0.15s ease;
+  transition: all 0.15s ease;
   cursor: pointer;
+  background-color: ${({ $isSelected }) =>
+    $isSelected ? "#e0e7ff" : "transparent"};
+  border-left: 3px solid
+    ${({ $isSelected }) => ($isSelected ? "#4f46e5" : "transparent")};
 
   &:hover {
-    background-color: #f1f5f9;
+    background-color: ${({ $isSelected }) =>
+      $isSelected ? "#c7d2fe" : "#f1f5f9"};
   }
 `;
 
-const ToggleIcon = styled.span<{ $isOpen: boolean; $hasChildren: boolean }>`
+const ToggleButton = styled.button<{ $isOpen: boolean; $hasChildren: boolean }>`
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  width: 18px;
-  height: 18px;
-  font-size: 12px;
+  width: 20px;
+  height: 20px;
+  background: none;
+  border: none;
+  cursor: pointer;
+  padding: 0;
+  font-size: 11px;
   color: #64748b;
   transform: ${({ $isOpen }) => ($isOpen ? "rotate(90deg)" : "rotate(0deg)")};
   transition: transform 0.2s ease;
   visibility: ${({ $hasChildren }) => ($hasChildren ? "visible" : "hidden")};
+
+  &:hover {
+    color: #1e293b;
+  }
 `;
 
 const NodeName = styled.span`
   font-weight: 500;
   font-size: 14px;
   color: #1e293b;
+  flex: 1;
 `;
 
 const HeadcountBadge = styled.span`
@@ -60,7 +75,6 @@ const PerformanceIndicator = styled.div<{ $score: number }>`
   display: flex;
   align-items: center;
   gap: 6px;
-  margin-left: auto;
   font-size: 12px;
   font-weight: 600;
   color: ${({ $score }) => {
@@ -91,14 +105,33 @@ export const TreeNodeItem: React.FC<TreeNodeItemProps> = ({
   node,
   defaultExpandedLevel = 1,
 }) => {
-  // Уровень 0 (корни) и уровень 1 (дочерние узлы дивизионов) раскрыты по умолчанию
+  const { selectedNodeId, setSelectedNodeId } = useOrgUi();
   const [isOpen, setIsOpen] = useState<boolean>(
     node.level <= defaultExpandedLevel,
   );
 
   const hasChildren = node.children.length > 0;
+  const isSelected = selectedNodeId === node.id;
 
-  const handleToggle = () => {
+  // Автоматическое раскрытие ветви, если внутри находится выбранный узел
+  useEffect(() => {
+    const isDescendantSelected = (n: TreeNode, targetId: string): boolean => {
+      return n.children.some(
+        (c) => c.id === targetId || isDescendantSelected(c, targetId),
+      );
+    };
+
+    if (selectedNodeId && isDescendantSelected(node, selectedNodeId)) {
+      setIsOpen(true);
+    }
+  }, [selectedNodeId, node]);
+
+  const handleRowClick = () => {
+    setSelectedNodeId(node.id);
+  };
+
+  const handleToggleClick = (e: React.MouseEvent) => {
+    e.stopPropagation();
     if (hasChildren) {
       setIsOpen((prev) => !prev);
     }
@@ -106,10 +139,20 @@ export const TreeNodeItem: React.FC<TreeNodeItemProps> = ({
 
   return (
     <NodeWrapper>
-      <NodeRow $level={node.level} onClick={handleToggle}>
-        <ToggleIcon $isOpen={isOpen} $hasChildren={hasChildren}>
+      <NodeRow
+        $level={node.level}
+        $isSelected={isSelected}
+        onClick={handleRowClick}
+      >
+        <ToggleButton
+          type="button"
+          $isOpen={isOpen}
+          $hasChildren={hasChildren}
+          onClick={handleToggleClick}
+          aria-label={isOpen ? "Свернуть ветку" : "Развернуть ветку"}
+        >
           ▶
-        </ToggleIcon>
+        </ToggleButton>
         <NodeName>{node.name}</NodeName>
         <HeadcountBadge>{node.headcount} чел.</HeadcountBadge>
         <PerformanceIndicator $score={node.performance}>
