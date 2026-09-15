@@ -11,6 +11,7 @@ import {
 import { formatCurrency } from "@/shared/lib/formatters";
 import { useOrgUi } from "@/features/org-view/model/OrgUiContext";
 import { useDebounce } from "@/shared/lib/useDebounce";
+import { parseNaturalLanguageQuery } from "@/features/org-search/lib/aiSearchParser";
 import { HighlightCell } from "./HighlightCell";
 
 const TableWrapper = styled.div`
@@ -35,16 +36,28 @@ const ControlsBar = styled.div`
   padding: 16px 20px;
   border-bottom: 1px solid #e2e8f0;
   display: flex;
+  flex-direction: column;
+  gap: 10px;
+`;
+
+const SearchRow = styled.div`
+  display: flex;
   justify-content: space-between;
   align-items: center;
   gap: 16px;
 `;
 
+const SearchInputWrapper = styled.div`
+  position: relative;
+  width: 100%;
+  max-width: 440px;
+`;
+
 const SearchInput = styled.input`
   width: 100%;
-  max-width: 360px;
-  padding: 8px 14px;
-  font-size: 14px;
+  padding: 9px 14px;
+  padding-right: 36px;
+  font-size: 13px;
   border: 1px solid #cbd5e1;
   border-radius: 6px;
   outline: none;
@@ -54,6 +67,28 @@ const SearchInput = styled.input`
     border-color: #4f46e5;
     box-shadow: 0 0 0 2px rgba(79, 70, 229, 0.15);
   }
+`;
+
+const AiBadge = styled.span`
+  position: absolute;
+  right: 10px;
+  top: 50%;
+  transform: translateY(-50%);
+  font-size: 12px;
+  user-select: none;
+`;
+
+const AiFilterHint = styled.div`
+  font-size: 12px;
+  color: #4338ca;
+  background-color: #e0e7ff;
+  padding: 4px 10px;
+  border-radius: 6px;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-weight: 500;
+  align-self: flex-start;
 `;
 
 const KeyboardHint = styled.span`
@@ -170,6 +205,13 @@ const PerformancePill = styled.span<{ $score: number }>`
   }};
 `;
 
+const EmptyNotice = styled.div`
+  padding: 48px;
+  text-align: center;
+  color: #64748b;
+  font-size: 14px;
+`;
+
 export const OrgTable: React.FC = () => {
   const { tree } = useOrgTree();
   const {
@@ -183,7 +225,6 @@ export const OrgTable: React.FC = () => {
   const [sortField, setSortField] = useState<SortField>("level");
   const [sortDirection, setSortDirection] = useState<SortDirection>("asc");
 
-  // Хранилище агрегированных данных
   const aggregatedMapRef = useRef<Map<string, AggregatedOrgNode>>(new Map());
   const [aggregatedList, setAggregatedList] = useState<AggregatedOrgNode[]>([]);
 
@@ -192,7 +233,7 @@ export const OrgTable: React.FC = () => {
 
   const debouncedSearch = useDebounce(searchQuery, 250);
 
-  // 1. Первичная полная агрегация (считается ровно один раз при загрузке данных)
+  // Первичная агрегация данных
   useEffect(() => {
     if (tree && tree.length > 0 && aggregatedMapRef.current.size === 0) {
       const { flatAggregatedList, aggregatedMap } = aggregateOrgTree(tree);
@@ -201,7 +242,7 @@ export const OrgTable: React.FC = () => {
     }
   }, [tree]);
 
-  // 2. Инкрементальный пересчет ТОЛЬКО для затронутого узла и предков при патче из сокета
+  // Инкрементальный пересчет при live-патче
   useEffect(() => {
     if (lastPatch && aggregatedMapRef.current.size > 0) {
       const { updatedMap, updatedList } = patchNodeAndAncestors(
@@ -213,16 +254,61 @@ export const OrgTable: React.FC = () => {
     }
   }, [lastPatch]);
 
-  // 3. Фильтрация
+  // AI NLP парсинг поисковой строки
+  const parsedFilter = useMemo(() => {
+    return parseNaturalLanguageQuery(debouncedSearch);
+  }, [debouncedSearch]);
+
+  // Фильтрация с поддержкой AI-параметров или текстового fallback
   const filteredList = useMemo(() => {
     if (!debouncedSearch.trim()) return aggregatedList;
-    const query = debouncedSearch.toLowerCase().trim();
-    return aggregatedList.filter((item) =>
-      item.name.toLowerCase().includes(query),
-    );
-  }, [aggregatedList, debouncedSearch]);
 
-  // 4. Сортировка
+    if (parsedFilter.isAiParsed) {
+      return aggregatedList.filter((node) => {
+        if (
+          parsedFilter.targetLevel !== undefined &&
+          node.level !== parsedFilter.targetLevel
+        ) {
+          return false;
+        }
+        if (
+          parsedFilter.maxPerformance !== undefined &&
+          node.weightedPerformance > parsedFilter.maxPerformance
+        ) {
+          return false;
+        }
+        if (
+          parsedFilter.minPerformance !== undefined &&
+          node.weightedPerformance < parsedFilter.minPerformance
+        ) {
+          return false;
+        }
+        if (
+          parsedFilter.minBudget !== undefined &&
+          node.totalBudget < parsedFilter.minBudget
+        ) {
+          return false;
+        }
+        if (
+          parsedFilter.maxBudget !== undefined &&
+          node.totalBudget > parsedFilter.maxBudget
+        ) {
+          return false;
+        }
+        return true;
+      });
+    }
+
+    // Текстовый fallback
+    const textQuery = (
+      parsedFilter.textFallback || debouncedSearch
+    ).toLowerCase();
+    return aggregatedList.filter((item) =>
+      item.name.toLowerCase().includes(textQuery),
+    );
+  }, [aggregatedList, debouncedSearch, parsedFilter]);
+
+  // Сортировка
   const sortedList = useMemo(() => {
     return [...filteredList].sort((a, b) => {
       let result = 0;
@@ -312,110 +398,128 @@ export const OrgTable: React.FC = () => {
       ref={containerRef}
       tabIndex={0}
       onKeyDown={handleKeyDown}
-      aria-label="Таблица оргструктуры с поддержкой стрелок"
+      aria-label="Таблица оргструктуры с поддержкой клавиатуры"
     >
       <ControlsBar>
-        <SearchInput
-          type="text"
-          placeholder="Фильтр по названию подразделения..."
-          value={searchQuery}
-          onChange={(e) => setSearchQuery(e.target.value)}
-        />
-        <KeyboardHint>⌨️ Навигация: ↑ / ↓, Home, End</KeyboardHint>
+        <SearchRow>
+          <SearchInputWrapper>
+            <SearchInput
+              type="text"
+              placeholder="Поиск или запрос: «отделы с эффективностью ниже 70»..."
+              value={searchQuery}
+              onChange={(e) => setSearchQuery(e.target.value)}
+            />
+            <AiBadge title="Поддерживает поиск на естественном языке">
+              ✨
+            </AiBadge>
+          </SearchInputWrapper>
+          <KeyboardHint>Строк: {sortedList.length}</KeyboardHint>
+        </SearchRow>
+
+        {parsedFilter.explanation && (
+          <AiFilterHint>{parsedFilter.explanation}</AiFilterHint>
+        )}
       </ControlsBar>
 
       <TableContainer>
-        <StyledTable>
-          <thead>
-            <tr>
-              <TableHeaderCell
-                onClick={() => handleHeaderClick("name")}
-                onDoubleClick={() => handleHeaderDoubleClick("name")}
-              >
-                Подразделение{renderSortIndicator("name")}
-              </TableHeaderCell>
-              <TableHeaderCell
-                $align="center"
-                onClick={() => handleHeaderClick("level")}
-                onDoubleClick={() => handleHeaderDoubleClick("level")}
-              >
-                Уровень{renderSortIndicator("level")}
-              </TableHeaderCell>
-              <TableHeaderCell
-                $align="right"
-                onClick={() => handleHeaderClick("totalHeadcount")}
-                onDoubleClick={() => handleHeaderDoubleClick("totalHeadcount")}
-              >
-                Всего сотрудников{renderSortIndicator("totalHeadcount")}
-              </TableHeaderCell>
-              <TableHeaderCell
-                $align="right"
-                onClick={() => handleHeaderClick("totalBudget")}
-                onDoubleClick={() => handleHeaderDoubleClick("totalBudget")}
-              >
-                Бюджет суммарный{renderSortIndicator("totalBudget")}
-              </TableHeaderCell>
-              <TableHeaderCell
-                $align="center"
-                onClick={() => handleHeaderClick("weightedPerformance")}
-                onDoubleClick={() =>
-                  handleHeaderDoubleClick("weightedPerformance")
-                }
-              >
-                Средняя эффективность
-                {renderSortIndicator("weightedPerformance")}
-              </TableHeaderCell>
-            </tr>
-          </thead>
-          <tbody>
-            {sortedList.map((node: AggregatedOrgNode) => {
-              const isSelected = selectedNodeId === node.id;
-
-              return (
-                <TableRow
-                  key={node.id}
-                  ref={(el) => {
-                    if (el) rowRefs.current.set(node.id, el);
-                    else rowRefs.current.delete(node.id);
-                  }}
-                  $isSelected={isSelected}
-                  onClick={() => setSelectedNodeId(node.id)}
+        {sortedList.length === 0 ? (
+          <EmptyNotice>
+            Подразделений по заданному условию не найдено
+          </EmptyNotice>
+        ) : (
+          <StyledTable>
+            <thead>
+              <tr>
+                <TableHeaderCell
+                  onClick={() => handleHeaderClick("name")}
+                  onDoubleClick={() => handleHeaderDoubleClick("name")}
                 >
-                  <TableCell>
-                    <strong>{node.name}</strong>
-                  </TableCell>
-                  <TableCell $align="center">
-                    <LevelBadge $level={node.level}>
-                      {node.level === 0
-                        ? "Дивизион"
-                        : node.level === 1
-                          ? "Отдел"
-                          : "Команда"}
-                    </LevelBadge>
-                  </TableCell>
+                  Подразделение{renderSortIndicator("name")}
+                </TableHeaderCell>
+                <TableHeaderCell
+                  $align="center"
+                  onClick={() => handleHeaderClick("level")}
+                  onDoubleClick={() => handleHeaderDoubleClick("level")}
+                >
+                  Уровень{renderSortIndicator("level")}
+                </TableHeaderCell>
+                <TableHeaderCell
+                  $align="right"
+                  onClick={() => handleHeaderClick("totalHeadcount")}
+                  onDoubleClick={() =>
+                    handleHeaderDoubleClick("totalHeadcount")
+                  }
+                >
+                  Всего сотрудников{renderSortIndicator("totalHeadcount")}
+                </TableHeaderCell>
+                <TableHeaderCell
+                  $align="right"
+                  onClick={() => handleHeaderClick("totalBudget")}
+                  onDoubleClick={() => handleHeaderDoubleClick("totalBudget")}
+                >
+                  Бюджет суммарный{renderSortIndicator("totalBudget")}
+                </TableHeaderCell>
+                <TableHeaderCell
+                  $align="center"
+                  onClick={() => handleHeaderClick("weightedPerformance")}
+                  onDoubleClick={() =>
+                    handleHeaderDoubleClick("weightedPerformance")
+                  }
+                >
+                  Средняя эффективность
+                  {renderSortIndicator("weightedPerformance")}
+                </TableHeaderCell>
+              </tr>
+            </thead>
+            <tbody>
+              {sortedList.map((node: AggregatedOrgNode) => {
+                const isSelected = selectedNodeId === node.id;
 
-                  {/* Ячейки с автоматической fade-out подсветкой при изменении числа */}
-                  <HighlightCell value={node.totalHeadcount} align="right">
-                    {node.totalHeadcount} чел.
-                  </HighlightCell>
-
-                  <HighlightCell value={node.totalBudget} align="right">
-                    {formatCurrency(node.totalBudget)}
-                  </HighlightCell>
-
-                  <HighlightCell
-                    value={node.weightedPerformance}
-                    align="center"
+                return (
+                  <TableRow
+                    key={node.id}
+                    ref={(el) => {
+                      if (el) rowRefs.current.set(node.id, el);
+                      else rowRefs.current.delete(node.id);
+                    }}
+                    $isSelected={isSelected}
+                    onClick={() => setSelectedNodeId(node.id)}
                   >
-                    <PerformancePill $score={node.weightedPerformance}>
-                      {node.weightedPerformance}%
-                    </PerformancePill>
-                  </HighlightCell>
-                </TableRow>
-              );
-            })}
-          </tbody>
-        </StyledTable>
+                    <TableCell>
+                      <strong>{node.name}</strong>
+                    </TableCell>
+                    <TableCell $align="center">
+                      <LevelBadge $level={node.level}>
+                        {node.level === 0
+                          ? "Дивизион"
+                          : node.level === 1
+                            ? "Отдел"
+                            : "Команда"}
+                      </LevelBadge>
+                    </TableCell>
+
+                    <HighlightCell value={node.totalHeadcount} align="right">
+                      {node.totalHeadcount} чел.
+                    </HighlightCell>
+
+                    <HighlightCell value={node.totalBudget} align="right">
+                      {formatCurrency(node.totalBudget)}
+                    </HighlightCell>
+
+                    <HighlightCell
+                      value={node.weightedPerformance}
+                      align="center"
+                    >
+                      <PerformancePill $score={node.weightedPerformance}>
+                        {node.weightedPerformance}%
+                      </PerformancePill>
+                    </HighlightCell>
+                  </TableRow>
+                );
+              })}
+            </tbody>
+          </StyledTable>
+        )}
       </TableContainer>
     </TableWrapper>
   );
